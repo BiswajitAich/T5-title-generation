@@ -794,15 +794,17 @@ dependencies = [
     { name = "accelerate" },
     { name = "bitsandbytes" },
     { name = "fastapi" },
+    { name = "torch" },
     { name = "transformers" },
     { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "accelerate", specifier = ">=1.11.0" },
+    { name = "accelerate", specifier = ">=0.26.0" },
     { name = "bitsandbytes", specifier = ">=0.48.2" },
     { name = "fastapi", specifier = ">=0.121.2" },
+    { name = "torch", specifier = ">=2.9.1" },
     { name = "transformers", specifier = ">=4.57.1" },
     { name = "uvicorn", specifier = ">=0.38.0" },
 ]

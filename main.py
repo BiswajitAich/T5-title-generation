@@ -3,10 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import time
-import torch
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
-# Use the non-quantized model path instead
 MODEL_DIR = "aich007/T5-small-title-generation"
 model = None
 tokenizer = None
@@ -18,18 +16,7 @@ async def load_model():
     try:
         print("Loading model...")
 
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-        )
-
-        model = AutoModelForSeq2SeqLM.from_pretrained(
-            MODEL_DIR,
-            device_map={"": "cpu"},
-            quantization_config=bnb_config,
-        )
+        model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_DIR, low_cpu_mem_usage=True)
         tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
 
         model.eval()
@@ -61,17 +48,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 def generate_title(message, max_new_tokens=10):
     """Generate title from message using the loaded model."""
     try:
-        # device = next(model.parameters()).device
-        # Tokenize the input message
         inputs = tokenizer(
             message, return_tensors="pt", truncation=True, max_length=128
-        ).to("cpu")
+        )
 
         output_sequences = model.generate(
             input_ids=inputs["input_ids"],
@@ -80,9 +64,8 @@ def generate_title(message, max_new_tokens=10):
             do_sample=False,
             num_beams=1,
             early_stopping=True,
-        ).to("cpu")
+        )
 
-        # Decode the generated title
         generated_title = tokenizer.decode(
             output_sequences[0],
             skip_special_tokens=True,
@@ -111,14 +94,10 @@ async def get_title(message: str = "write a c++ code to add two numbers"):
 
 
 @app.get("/test")
-def test():
+async def test():
     """Test endpoint to verify model functionality."""
     if model is None or tokenizer is None:
-        print("Re-Loading the model")
-        if not load_model():
-            return JSONResponse(
-                status_code=503, content={"error": "Failed to load model"}
-            )
+        return JSONResponse(status_code=503, content={"error": "Model not loaded"})
 
     print("Testing model...")
     my_message = "write a c++ code to add two numbers"
