@@ -3,10 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import time
-
-# from fastapi.staticfiles import StaticFiles
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
-import torch
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, BitsAndBytesConfig
 
 # Use the non-quantized model path instead
 MODEL_DIR = "aich007/T5-small-title-generation"
@@ -20,12 +17,19 @@ async def load_model():
     try:
         print("Loading model...")
 
-        model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_DIR)
+        bnb_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=6.0,
+        )
+
+        model = AutoModelForSeq2SeqLM.from_pretrained(
+            MODEL_DIR,
+            device_map="auto",
+            quantization_config=bnb_config,
+        )
         tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
 
         model.eval()
-
-        torch.set_num_threads(2)
 
         print("Model loaded successfully.")
         return True
@@ -38,12 +42,11 @@ async def load_model():
 async def lifespan(app: FastAPI):
     """Load model on application startup."""
     print("Starting up...")
-    torch.set_num_threads(1)
+
     success = await load_model()
     if not success:
         print("WARNING: Model failed to load!")
     yield
-    # Code to run on shutdown
     print("Application shutdown!")
 
 
@@ -67,20 +70,20 @@ def generate_title(message, max_new_tokens=10):
             message, return_tensors="pt", truncation=True, max_length=128
         ).to("cpu")
 
-        # Generate the title (greedy, low latency)
-        with torch.no_grad():  # Disable gradient calculation for inference
-            output_sequences = model.generate(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"],
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-                num_beams=1,
-                early_stopping=True,
-            )
+        output_sequences = model.generate(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            num_beams=1,
+            early_stopping=True,
+        ).to("cpu")
 
         # Decode the generated title
         generated_title = tokenizer.decode(
-            output_sequences[0], skip_special_tokens=True
+            output_sequences[0],
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True,
         )
         return generated_title
     except Exception as e:
